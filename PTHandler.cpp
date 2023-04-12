@@ -11,7 +11,7 @@ PTHandler::PTHandler() {
     /* Possiblement useless (très certainement même) */
     this->processHandle =  GetCurrentProcess();
     HANDLE tokenH;
-    if (!OpenProcessToken(this -> processHandle, TOKEN_QUERY, &tokenH)) {
+    if (!OpenProcessToken(this -> processHandle, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &tokenH)) {
         throw std::runtime_error("[*] - Couldn't open current process token\n");
     }
     this -> tokenHandle = tokenH;
@@ -28,9 +28,9 @@ PTHandler::PTHandler() {
 
 
 //Open_Process
-TOKEN_STATISTICS PTHandler::getProcessInformation(HANDLE processHandle) {
+TOKEN_STATISTICS PTHandler::getProcessInformation(HANDLE pHandle) {
     HANDLE tokenH;
-    if (!OpenProcessToken(processHandle,
+    if (!OpenProcessToken(pHandle,
                           TOKEN_QUERY,
                           &tokenH))
     {
@@ -50,41 +50,22 @@ TOKEN_STATISTICS PTHandler::getProcessInformation(HANDLE processHandle) {
     return tokenStatistics;
 }
 
-void PTHandler::showTokenInfo(HANDLE processHandle) {
+void PTHandler::showTokenInfo(HANDLE pHandle) {
     std::string impersonationLevels[] {"Anonymous", "Identification", "Impersonation", "Delegation"};
     TOKEN_STATISTICS tStats = getProcessInformation(processHandle);
     std::cout << "[*] [LUID] --> " << tStats.AuthenticationId.HighPart << tStats.AuthenticationId.LowPart << "\n";
     std::cout << "[*] [TYPE] --> " << tStats.TokenType << std::endl;
     std::cout << "[*] [Impersonation Level] --> " << impersonationLevels[tStats.ImpersonationLevel] << std::endl;
-/*    LUID privilegeLuid;
-    if (!LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &privilegeLuid)) {
-        throw std::runtime_error("[*] - Couldn't get LUID for SeDebugPrivilege\n");
-    }
-    TOKEN_PRIVILEGES tempTP;
-    tempTP.PrivilegeCount = 1;
-    tempTP.Privileges[0].Luid = privilegeLuid;
-    tempTP.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-    BOOL isSeDebugEnabled = TRUE;*/
-/*    if (PrivilegeCheck(tokenHandle, &tempTP.Privileges, &isSeDebugEnabled) != 0) {
-        CloseHandle(tokenHandle);
-        isSeDebugEnabled = FALSE;
-    }
-    std::cout << "[*] [SE_Debug enabled] -->" <<*/
+    std::cout << (isSeDebugEnabled() ? "[*] - Se_Debug Enabled :-)\n" : "[*] - Se_Debug Disabled ://\n");
 }
 
-BOOL PTHandler::enableSeDebugPrivileges() {
-    BOOL res = TRUE;
-    LPCSTR debugPriv = SE_DEBUG_NAME;
-    LPCSTR tcbPriv = SE_TCB_NAME;
-
+BOOL PTHandler::enableSeDebugPrivileges() const {
+    LPCTSTR seDebugPriv = SE_DEBUG_NAME;
     LUID debugPrivilegeLuid;
-    if (!LookupPrivilegeValue(NULL, debugPriv, &debugPrivilegeLuid)) {
-        throw std::runtime_error("[*] - Couldn't get LUID for SeDebugPrivilege\n");
-    }
 
-    LUID tcbPrivilegeLuid;
-    if (!LookupPrivilegeValue(NULL, tcbPriv, &tcbPrivilegeLuid)) {
-        throw std::runtime_error("[*] - Couldn't get LUID for SeTcbPrivilege\n");
+    if (!LookupPrivilegeValue(NULL, seDebugPriv, &debugPrivilegeLuid)) {
+        std::cout << "[*] - Couldn't get LUID for SeDebugPrivilege, error : "<< GetLastError() <<"\n";
+        return false;
     }
 
     TOKEN_PRIVILEGES tempTP;
@@ -92,53 +73,32 @@ BOOL PTHandler::enableSeDebugPrivileges() {
     tempTP.Privileges[0].Luid = debugPrivilegeLuid;
     tempTP.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
 
-
-
-    if (!AdjustTokenPrivileges(this->tokenHandle, FALSE, &tempTP, sizeof(TOKEN_PRIVILEGES), (PTOKEN_PRIVILEGES)NULL, (PDWORD)NULL)) {
-        if (GetLastError() == ERROR_NOT_ALL_ASSIGNED) {
-            std::cout << "/!\\ Error: "<< GetLastError() << " <=> This token doesn't have the specified privilege\n\n";
-        }
-        else {
-            std::cout << "/!\\ Error: "<< GetLastError() << "\n\n";
-        }
-        std::cout   << "/!\\ Couldn't adjust current process token privileges, maybe it's already enabled..\n";
-        return FALSE;
+    if (!AdjustTokenPrivileges(this -> tokenHandle, FALSE, &tempTP, sizeof(TOKEN_PRIVILEGES), NULL, NULL)) {
+        std::cout << "[*] - Couldn't adjust token privilege, error : "<< GetLastError() <<"\n";
+        return false;
     }
-    std::cout << "[*] - Sucessfully added needed priorities..\n";
-    return res;
+    std::cout << "[*] - Sucessfully added needed privilege :)..\n";
+    return true;
 }
 
 BOOL PTHandler::isSeDebugEnabled() {
     DWORD dwLength = getTokenPrivNeededBufferSize();
     TOKEN_PRIVILEGES* tempTP = (TOKEN_PRIVILEGES*) malloc(dwLength);
-
     LPCTSTR debugPriv = SE_DEBUG_NAME;
-
     if (!GetTokenInformation(this -> tokenHandle, TokenPrivileges, tempTP, dwLength, &dwLength)) {
         std::cerr << "Error: "  << GetLastError() << std::endl;
         CloseHandle(this -> tokenHandle);
-        return FALSE;
+        return false;
     }
-    //To determine buffer size
-
-
-    //May need to verify SID && privilege name to eliminate all false negatives
     TCHAR privName[1024]; //Buffer for name of privilege
-    TCHAR sidName[1024];
-    SID_NAME_USE sidNameUse;
     for (auto i = 0 ; i < tempTP -> PrivilegeCount ; ++i) {
         DWORD privSize = sizeof(privName) / sizeof(TCHAR);
-        DWORD sidSize = sizeof(sidName) / sizeof(TCHAR);
         if (LookupPrivilegeName(nullptr, &tempTP -> Privileges[i].Luid, privName, &privSize)
-            && LookupAccountSid(nullptr, &tempTP -> Privileges[i].Attributes, sidName, &sidSize, privName, &privSize, &sidNameUse)
             && (_tcscmp(privName, debugPriv) == 0)
             && tempTP -> Privileges[i].Attributes & SE_PRIVILEGE_ENABLED)
-        {
-                return TRUE;
-        }
+                return true;
     }
-    std::cerr << "/!\\ - Error: " << GetLastError();
-    return FALSE;
+    return false;
 }
 
 DWORD PTHandler::getTokenPrivNeededBufferSize() {
@@ -152,7 +112,13 @@ DWORD PTHandler::getTokenPrivNeededBufferSize() {
 }
 
 void PTHandler::listExistingTokens() {
+    //Listing all system handles
+}
 
+PTHandler::~PTHandler() {
+    CloseHandle(processHandle);
+    CloseHandle(tokenHandle);
+    std::cout << "Cya later cowboy ;)\n";
 }
 
 
