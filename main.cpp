@@ -7,7 +7,8 @@ int main() {
     ptHandler.enableSeDebugPrivileges();
     ptHandler.showTokenInfo(GetCurrentProcess());
     std::cout << std::endl;
-    ptHandler.printProcessIdNamePriorityAndElevationType(GetCurrentProcessId());
-    ptHandler.printAdminProcessesDep();
+//    ptHandler.printProcessIdNamePriorityAndElevationType(GetCurrentProcessId());
+//    ptHandler.printAdminProcessesDep();
+    ptHandler.printAdminProcesses();
     return 0;
 }

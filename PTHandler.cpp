@@ -138,52 +138,81 @@ void PTHandler::printAdminProcessesDep() {
     std::cout << "[*] - Process ID | Process Name | Process Priority | Elevation Type" << std::endl;
     for(size_t i = 0 ; i < cProcesses ; ++i) {
         if (aProcesses[i] != 0) {
-            HANDLE processHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,FALSE, aProcesses[i]);
-            if (processHandle) {
-//                if (isProcessAdmin(processHandle)) {
+            HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, aProcesses[i]);
+            if (hProcess) {
+//                if (isProcessAdmin(hProcess)) {
                 printProcessIdNamePriorityAndElevationType(aProcesses[i]);
 //                }
-                CloseHandle(processHandle);
+                CloseHandle(hProcess);
             }
         }
     }
 }
+//Same as before but this time using windows Snapshot
+void PTHandler::printAdminProcesses() {
+    HANDLE hProcessSnap;
+    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hProcessSnap == INVALID_HANDLE_VALUE) {
+        std::cout << "[*] - Couldn't create process snapshot, error: " << GetLastError() << std::endl;
+        return;
+    }
+
+    PROCESSENTRY32 pe32;
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+
+    if (!Process32First(hProcessSnap, &pe32)) {
+        std::cout << "[*] - Couldn't get first process, error: " << GetLastError() << std::endl;
+        CloseHandle(hProcessSnap);
+        return;
+    }
+    std::cout << "[*] - Process ID | Process Name | Process Priority | Elevation Type" << std::endl;
+    do {
+        HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pe32.th32ProcessID);
+        if (hProcess) {
+//            if (isProcessAdmin(hProcess)) {
+                printProcessIdNamePriorityAndElevationType(pe32.th32ProcessID);
+//            }
+            CloseHandle(hProcess);
+        }
+    } while (Process32Next(hProcessSnap, &pe32));
+    CloseHandle(hProcessSnap);
+}
 
 void PTHandler::printProcessIdNamePriorityAndElevationType(DWORD processID) {
-    HANDLE processHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,FALSE, processID);
-    if (processHandle) {
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processID);
+    if (hProcess) {
         HMODULE hMod;
         DWORD cbNeeded;
-        if (EnumProcessModules(processHandle, &hMod, sizeof(HMODULE), &cbNeeded) == 0) {
+        if (EnumProcessModules(hProcess, &hMod, sizeof(HMODULE), &cbNeeded) == 0) {
             std::cout << "[*] - Couldn't enumerate process modules for pid: " << processID << ", error: " << GetLastError() << std::endl;
-            CloseHandle(processHandle);
+            CloseHandle(hProcess);
             return;
         }
         char processName[1024];
-        if (GetModuleBaseName(processHandle, hMod, processName, sizeof(processName)/sizeof(char)) == 0) {
+        if (GetModuleBaseName(hProcess, hMod, processName, sizeof(processName) / sizeof(char)) == 0) {
             std::cout << "[*] - Couldn't get process name, error: " << GetLastError() << std::endl;
-            CloseHandle(processHandle);
+            CloseHandle(hProcess);
             return;
         }
         std::cout << "[*] - " << processID << " | ";
         std::cout << processName << " | ";
-        std::cout << priorityClassToString(GetPriorityClass(processHandle)) << " | ";
+        std::cout << priorityClassToString(GetPriorityClass(hProcess)) << " | ";
         HANDLE hToken;
-        if (OpenProcessToken(processHandle, TOKEN_QUERY, &hToken) == 0) {
+        if (OpenProcessToken(hProcess, TOKEN_QUERY, &hToken) == 0) {
             std::cout << "[*] - Couldn't open process token, error: " << GetLastError() << std::endl;
-            CloseHandle(processHandle);
+            CloseHandle(hProcess);
             return;
         }
         TOKEN_ELEVATION_TYPE elevationType;
         DWORD dwSize;
         if (GetTokenInformation(hToken, TokenElevationType, &elevationType, sizeof(elevationType), &dwSize) == 0) {
             std::cout << "[*] - Couldn't get token elevation type, error: " << GetLastError() << std::endl;
-            CloseHandle(processHandle);
+            CloseHandle(hProcess);
             return;
         }
         std::cout << elevationTypeToString(elevationType) << std::endl;
         CloseHandle(hToken);
-        CloseHandle(processHandle);
+        CloseHandle(hProcess);
     }
 }
 
@@ -219,11 +248,11 @@ std::string PTHandler::elevationTypeToString(TOKEN_ELEVATION_TYPE elevationType)
     }
 }
 
-BOOL PTHandler::isProcessAdmin(HANDLE pHandle) {
+BOOL PTHandler::isProcessAdmin(HANDLE hProcess) {
     HANDLE hToken;
-    if (!OpenProcessToken(pHandle, TOKEN_QUERY, &hToken)) {
+    if (!OpenProcessToken(hProcess, TOKEN_QUERY, &hToken)) {
         std::cerr << "Error: "  << GetLastError() << std::endl;
-        CloseHandle(pHandle);
+        CloseHandle(hProcess);
         return false;
     }
     TOKEN_ELEVATION_TYPE elevationType;
@@ -232,7 +261,7 @@ BOOL PTHandler::isProcessAdmin(HANDLE pHandle) {
         std::cout << "Couldn't get process's token info , error: " << GetLastError() << std::endl;
         return false;
     }
-    return elevationType == TokenElevationTypeDefault;
+    return elevationType == TokenElevationTypeFull;
 }
 
 

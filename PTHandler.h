@@ -3,7 +3,7 @@
 //
 #include <windows.h>
 #include <Psapi.h>
-
+#include <TlHelp32.h>
 
 #pragma once
 
@@ -33,12 +33,13 @@ public:
     DWORD getTokenPrivNeededBufferSize();
     BOOL enableSeDebugPrivileges() const;
     void printProcessIdNamePriorityAndElevationType(DWORD processID);
+    void printAdminProcesses();
     std::string priorityClassToString(DWORD priorityClass);
     std::string elevationTypeToString(TOKEN_ELEVATION_TYPE elevationType);
     //    void listExistingTokens();
     void printAdminProcessesDep();
 
-    BOOL isProcessAdmin(HANDLE pHandle);
+    BOOL isProcessAdmin(HANDLE hProcess);
 };
 
 
