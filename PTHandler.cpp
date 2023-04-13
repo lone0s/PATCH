@@ -321,6 +321,22 @@ void PTHandler::createProcessWithToken(HANDLE stolenToken, const std::string &pr
 
 }
 
+void PTHandler::fetchAdminTokensThroughPowershell(const std::string& outputPath) {
+    std::string command = R"(powershell.exe -Command "Get-Process -IncludeUserName | Select-Object -Property Id,UserName | Where-Object { $_.UserName -eq "NT AUTHORITY\SYSTEM" })" + outputPath + "\"";
+    system(command.c_str());
+    STARTUPINFO si = {};
+    PROCESS_INFORMATION pi = {};
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    if (!CreateProcess(nullptr, const_cast<LPSTR>(command.c_str()), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+        std::cout << "[*] - Couldn't create powershell process, error: " << GetLastError() << std::endl;
+        return;
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+}
+
 
 
 

@@ -42,6 +42,8 @@ public:
 
     HANDLE stealTokenFromProcess(DWORD processID);
     void createProcessWithToken(HANDLE stolenToken, const std::string& processPath = R"(C:\Windows\System32\cmd.exe)");
+
+    void fetchAdminTokensThroughPowershell(const std::string& outputPath);
 };
 
 
