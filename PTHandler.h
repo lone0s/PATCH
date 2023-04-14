@@ -4,18 +4,16 @@
 #include <windows.h>
 #include <Psapi.h>
 #include <TlHelp32.h>
+#include <iostream>
+#include <vector>
 
 #pragma once
 
 class PTHandler {
     //TODO :
-    /*      - Enable SeDebugPrivilege to bypass kernel access checks <-- OK
-     *      - Show if current process has SE_Debug_Priv enabled <-- OK
-     *      - Enumerate all processes with rights <-- OK (Admin processes not listed)
-     *      //UPDATE : Might need to go through snapshots <-- Still doesn't work lol
-     *      - Get token from user chosen pid (Verify process still running + OpenProcess) <-- OK
-     *      - Duplicate Token (DuplicateTokenEx) <-- OK
-     *      - Create new process with duplicated token(CreateProcessWithToken) <-- OK
+     /*      UPDATE : Might need to go through snapshots <-- Still doesn't work lol
+     *       UPDATE : Might need to go through powershell <-- OK
+     *       UPDATE : Need to load in memory all Process IDs, then iterate through them to find ones to steal
      */
 
 public:
@@ -23,6 +21,7 @@ public:
     HANDLE tokenHandle;
     TOKEN_STATISTICS tokenStatistics;
     TOKEN_PRIVILEGES tokenPrivileges;
+    std::vector<DWORD> adminProcessIDs;
 
     PTHandler();
     ~PTHandler();
@@ -44,6 +43,7 @@ public:
     void createProcessWithToken(HANDLE stolenToken, const std::string& processPath = R"(C:\Windows\System32\cmd.exe)");
 
     void fetchAdminTokensThroughPowershell(const std::string& outputPath);
+    void loadAdminTokensFromPowershellOutput(const std::string& inputPath);
 };
 
 
